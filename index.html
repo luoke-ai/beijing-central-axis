@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>北京中轴线 · 一条线，七百年</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🏯</text></svg>">
+<link rel="stylesheet" href="leaflet/leaflet.css">
+<style>
+  :root{
+    --ink:#0f1320; --paper:#f6f1e7; --paper2:#efe7d8;
+    --gold:#b08d3e; --gold-lt:#d8b96a; --text:#2a2620; --muted:#7a7263;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:auto}
+  body{background:var(--paper);color:var(--text);
+       font-family:"Songti SC","STSong","Noto Serif SC",Georgia,serif;overflow-x:hidden}
+  #app{display:flex}
+
+  /* ---------- 地图（左侧固定） ---------- */
+  #map{position:fixed;top:0;left:0;width:52vw;height:100vh;height:100dvh;z-index:1}
+  .leaflet-tile{filter:sepia(.35) saturate(.75) brightness(1.02)}
+  .leaflet-container{background:var(--paper2)}
+
+  /* ---------- 叙事区（右侧滚动） ---------- */
+  #story{width:48vw;margin-left:52vw;position:relative;z-index:2}
+
+  section{
+    min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+    padding:8vh 6vw;position:relative;
+  }
+
+  .card{
+    background:#fffdf7;border:1px solid #ddd0b8;border-radius:4px;
+    padding:34px 38px;box-shadow:0 2px 6px #0001,0 18px 50px -20px #0002;
+    opacity:0;transform:translateY(40px);transition:opacity .7s ease,transform .7s ease;
+    position:relative;
+  }
+  .card::before{
+    content:"";position:absolute;top:0;left:0;width:4px;height:100%;
+    background:linear-gradient(var(--gold-lt),var(--gold));
+  }
+  .card.in{opacity:1;transform:translateY(0)}
+
+  .years{font-size:13px;color:var(--gold);letter-spacing:2px;margin-bottom:6px}
+  .stop-name{font-size:clamp(34px,4vw,52px);font-weight:700;letter-spacing:4px;margin-bottom:4px}
+  .stop-intro{font-size:15px;color:var(--muted);margin-bottom:18px;letter-spacing:1px}
+  .story{font-size:16.5px;line-height:2.05;text-align:justify;margin-bottom:18px}
+  .facts{border-top:1px dashed #d8cbb0;padding-top:14px;font-size:13.5px;color:var(--muted);line-height:1.9}
+  .facts b{color:var(--gold);font-weight:600;margin-right:6px}
+
+  /* 进度点 */
+  .dots{position:fixed;left:3.2vw;top:50%;transform:translateY(-50%);z-index:10;
+        display:flex;flex-direction:column;gap:14px}
+  .dots a{display:block;width:10px;height:10px;border-radius:50%;
+          border:1.5px solid var(--gold);background:#fff8;transition:.3s;position:relative}
+  .dots a.active{background:var(--gold);transform:scale(1.35)}
+  .dots a span{position:absolute;left:20px;top:50%;transform:translateY(-50%);
+               font-size:12px;color:var(--text);white-space:nowrap;opacity:0;transition:.3s;
+               background:#fffdf7dd;padding:2px 8px;border-radius:3px;border:1px solid #e0d4ba}
+  .dots a:hover span,.dots a.active span{opacity:1}
+
+  /* ---------- 封面 ---------- */
+  #cover{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:0 6vw}
+  #cover .title{font-size:clamp(44px,6vw,84px);font-weight:700;letter-spacing:8px;line-height:1.25}
+  #cover .sub{font-size:clamp(15px,1.6vw,19px);color:var(--muted);margin-top:18px;line-height:2;max-width:34em}
+  #cover .hint{margin-top:40px;font-size:14px;color:var(--gold);letter-spacing:2px}
+  #cover .hint .arrow{display:inline-block;animation:down 1.6s infinite}
+  @keyframes down{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+  #cover .rule{width:64px;height:3px;background:var(--gold);margin:26px 0}
+
+  /* ---------- 尾章 ---------- */
+  #outro{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:0 6vw}
+  #outro .big{font-size:clamp(26px,3vw,40px);letter-spacing:6px;line-height:1.8}
+  #outro p{margin-top:22px;color:var(--muted);line-height:2.1;font-size:15px;max-width:30em}
+  #outro .credit{margin-top:44px;font-size:12px;color:#b3a98f;line-height:2}
+
+  /* 移动端：地图变全屏背景，叙事区全宽 */
+  @media (max-width:820px){
+    #map{width:100vw;opacity:.55}
+    #story{width:100vw;margin-left:0}
+    .card{background:#fffdf7ee}
+    section,#cover,#outro{min-height:92vh;padding:8vh 7vw}
+    .dots{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <div id="story">
+    <section id="cover">
+      <div class="title">北京中轴线</div>
+      <div class="rule"></div>
+      <div class="sub">从永定门到钟鼓楼，一条 7.8 公里的线，贯穿元明清三朝、七百余年。
+        向下滚动，镜头将沿这条线飞行，逐一经过 14 个节点。</div>
+      <div class="hint"><span class="arrow">↓</span> 向下滚动开始</div>
+    </section>
+    <div id="sections"></div>
+    <section id="outro">
+      <div class="big">一线贯南北<br>七百年一瞬</div>
+      <p>中轴线不只是一条地理线。从元大都的万宁桥，到明清的钟鼓楼；从皇帝祭天的大典，到胡同里的鸽哨——它把礼仪、权力与市井生活串在同一条直线上。2024 年，这条 7.8 公里的线以『北京中轴线』之名列入世界遗产。走在上面，脚下是七百年。</p>
+      <div class="credit">路线与历史信息为公开资料整理 · 坐标采用 WGS-84 · 底图 © 高德地图 · 界面受传统线装书风格启发</div>
+    </section>
+  </div>
+</div>
+<div class="dots" id="dots"></div>
+
+<script src="leaflet/leaflet.js"></script>
+<script src="data.js"></script>
+<script>
+(function(){
+  /* ---------- WGS84 -> GCJ-02 ---------- */
+  function wgs2gcj(lat, lng){
+    const a=6378245.0, ee=0.00669342162296594323;
+    function tLat(x,y){let r=-100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+      r+=(20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+      r+=(20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+      r+=(160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;return r;}
+    function tLng(x,y){let r=300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+      r+=(20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+      r+=(20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+      r+=(150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;return r;}
+    if(lng<72.004||lng>137.8347||lat<0.8293||lat>55.8271) return [lat,lng];
+    let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+    const rad=lat/180*Math.PI; let m=Math.sin(rad); m=1-ee*m*m; const sq=Math.sqrt(m);
+    dLat=(dLat*180)/((a*(1-ee))/(m*sq)*Math.PI);
+    dLng=(dLng*180)/(a/sq*Math.cos(rad)*Math.PI);
+    return [lat+dLat, lng+dLng];
+  }
+
+  /* ---------- 地图 ---------- */
+  const map = L.map('map', {zoomControl:false, attributionControl:false,
+    dragging:false, scrollWheelZoom:false, doubleClickZoom:false,
+    touchZoom:false, boxZoom:false, keyboard:false, zoomSnap:0.25}).setView([39.9,116.3975], 13);
+  L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+    {subdomains:['1','2','3','4'], maxZoom:17}).addTo(map);
+
+  const axisPts = STOPS.map(s=>wgs2gcj(s.pos[0], s.pos[1]));
+  // 中轴线本体
+  L.polyline(axisPts, {color:'#b08d3e', weight:3, opacity:.9, dashArray:'1,8', lineCap:'round'}).addTo(map);
+  L.polyline([axisPts[0], axisPts[axisPts.length-1]], {color:'#b08d3e', weight:1.5, opacity:.25}).addTo(map);
+
+  // 站点标记
+  const markers = STOPS.map((s,i)=>{
+    const m = L.circleMarker(axisPts[i], {
+      radius: i===7 ? 10 : 7,                 // 太和殿 = 权力顶点，最亮
+      color:'#7a5c14', weight:2, fillColor: i===7 ? '#d8a017' : '#fff8e6', fillOpacity:1
+    }).addTo(map);
+    m.bindTooltip(s.name, {permanent:true, direction:'right', offset:[8,0],
+      className:'axis-label'});
+    return m;
+  });
+
+  /* ---------- 生成叙事卡片 ---------- */
+  const secsEl = document.getElementById('sections');
+  STOPS.forEach((s,i)=>{
+    const sec = document.createElement('section');
+    sec.dataset.i = i;
+    sec.innerHTML = `
+      <div class="card">
+        <div class="years">${s.years}</div>
+        <div class="stop-name">${s.name}</div>
+        <div class="stop-intro">${s.intro}</div>
+        <div class="story">${s.story}</div>
+        <div class="facts">${s.facts.map(f=>`<div><b>·</b>${f}</div>`).join('')}</div>
+      </div>`;
+    secsEl.appendChild(sec);
+  });
+
+  // 进度点
+  const dotsEl = document.getElementById('dots');
+  STOPS.forEach((s,i)=>{
+    const a = document.createElement('a');
+    a.href = 'javascript:void(0)';
+    a.innerHTML = `<span>${s.name}</span>`;
+    a.addEventListener('click', ()=>{
+      document.querySelectorAll(`section[data-i="${i}"]`)[0].scrollIntoView({behavior:'smooth'});
+    });
+    dotsEl.appendChild(a);
+  });
+
+  // 站点标签样式（注入）
+  const st = document.createElement('style');
+  st.textContent = `.axis-label{background:none;border:none;box-shadow:none;
+    font-family:"Songti SC","STSong",serif;font-weight:700;font-size:13px;color:#4a3a12;
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;padding:0}`;
+  document.head.appendChild(st);
+
+  /* ---------- 滚动驱动 ---------- */
+  const secs = [...document.querySelectorAll('section[data-i]')];
+  let cur = -1;
+
+  function onScroll(){
+    const mid = window.innerHeight / 2;
+    let best = -1, bestD = 1e9;
+    secs.forEach((s,i)=>{
+      const r = s.getBoundingClientRect();
+      const d = Math.abs(r.top + r.height/2 - mid);
+      if(d < bestD){ bestD = d; best = i; }
+    });
+    if(best !== cur && bestD < window.innerHeight*0.9){
+      cur = best;
+      flyTo(best);
+    }
+    // 卡片显隐
+    secs.forEach(s=>{
+      const r = s.getBoundingClientRect();
+      s.querySelector('.card').classList.toggle('in', r.top < window.innerHeight*0.75 && r.bottom > window.innerHeight*0.2);
+    });
+    // 进度点
+    [...dotsEl.children].forEach((a,i)=> a.classList.toggle('active', i===cur));
+  }
+
+  function flyTo(i){
+    const p = axisPts[i];
+    // 终点（钟鼓楼）拉远看全貌，故宫节点居中俯视，其余沿线飞行
+    const zoom = (i===0) ? 14 : (i===STOPS.length-1 ? 13 : 15);
+    map.flyTo(p, zoom, {duration:1.6, easeLinearity:.22});
+    markers.forEach((m,j)=>{
+      if(j===i){ m.setStyle({radius:11, fillColor:'#d8a017'}); m.bringToFront(); }
+      else m.setStyle({radius: j===7?10:7, fillColor: j===7?'#d8a017':'#fff8e6'});
+    });
+  }
+
+  let raf = null;
+  window.addEventListener('scroll', ()=>{
+    if(raf) return;
+    raf = requestAnimationFrame(()=>{ onScroll(); raf = null; });
+  }, {passive:true});
+
+  // 移动端视口高度兜底
+  function fit(){
+    document.getElementById('map').style.height = window.innerHeight+'px';
+    map.invalidateSize();
+  }
+  window.addEventListener('resize', fit);
+  fit();
+  onScroll();
+})();
+</script>
+</body>
+</html>
